@@ -8,6 +8,7 @@
 
 import Foundation
 
+
 class CodeEmission  {
     let expr:VMExpression
     lazy var instrs:[String] = []
@@ -30,53 +31,138 @@ class CodeEmission  {
     static public func +(this:CodeEmission, _ intr:String) -> CodeEmission {
         return this.append(intr)
     }
-    
-    
+
+    static public func +=(this:CodeEmission, _ intr:[String]) -> CodeEmission {
+        for instr in intr {
+            this.append(instr)
+
+        }
+        return this
+    }
 }
 
 
+
 class CodeWriter {
-    lazy var emitters = [String:(VMExpression)-> CodeEmission]()
+
     
-    init() {
+    typealias Emitter = (VMExpression)-> CodeEmission;
+    lazy var emitters = [String:Emitter]()
+    let fileName:String
+    
+    init(fileName:String) {
+        self.fileName = fileName
+    }
+    
+    
+    private  func segmentName(for value:String) -> String{
+        let memMap = [
+            "local" : "LCL",
+            "static" : "N/A",
+            "this" : "THIS",
+            "that" : "THAT",
+            "pointer" : "N/A",
+            "argument" : "ARG"
+        ]
+        return memMap[value]!
+    }
+    
+    private func decrementStack() -> [String] {
+        return [
+            "@SP",
+            "M=A-1"
+        ]
+    }
+    
+    private func incrementStack() -> [String] {
+        return [
+            "@SP",
+            "M=A+1",
+        ]
+    }
+    
+    private func setAddr(to:String, offset:Int = 0) -> [String] {
+        
+        if offset > 1 {
+            return [
+                "@\(offset)",
+                "D=A",
+                "@\(to)",
+                "A=M+D"
+            ]
+        }
+        return [
+            "@\(to)",
+            "A=M"
+        ]
         
     }
     
-    private func popCall() -> (String, (VMExpression)-> CodeEmission) {
-        return ("pop", { expr in
-            let seg = "@\(expr.arg0!)"
-            let pos = "@\(expr.arg1!)"
+    
+    
+    private func popCall(expr:VMExpression) -> Emitter {
+
+            let seg = expr.arg0!
+            let hackAddr = "@\(self.segmentName(for: seg))"
+            let pos = expr.arg1!
             let emission = CodeEmission(expr:expr)
-            return emission
-                    + seg
+            
+            if (seg == "static") {
+                return emission
+                    + "@SP"
                     + "D=M"
-                    + pos
-                    + "D=D+A"
+                    + "D=D-1"
                     + "A=D"
                     + "D=M"
-                    + "@SP"
-                    + "D=M-1"
+                    + "@\(self.fileName).\(pos)"
                     + "M=D"
-        })
+            }
+            
+            return emission
+                += self.decrementStack()
+                += self.setAddr(to: seg, offset: Int(pos))
+                + "@\(seg).REG"
+                + "M=A"
+                + "@SP"
+                + "D=M"
+                + "@\(seg).REG"
+                + "A=M"
+
     }
+    
     
     private func pushCall() -> (String, (VMExpression)-> CodeEmission) {
         return ("push", { expr in
-            let seg = "@\(expr.arg0!)"
+            let seg = expr.arg0!
+            let hackAddr = "@\(segmentName(for: seg))"
             let pos = "@\(expr.arg1!)"
             let emission = CodeEmission(expr:expr)
+            if (seg == "constant") {
+                return emission
+                    + "@\(pos)"
+                    + "D=A"
+                    + "@SP"
+                    + "A=M"
+                    + "M=D"
+            }
+            if seg == "static" {
+                return emission
+                    + "@\(self.fileName).\(pos)"
+                    + "D=M"
+                    + "@SP"
+                    + "A=M"
+                    + "M=D"
+            }
             return emission
-                + seg
-                + "D=M"
-                + pos
-                + "D=D+A"
-                + "A=D"
+                += setAddr(to: seg, offset: Int(pos))
                 + "D=M"
                 + "@SP"
-                + "D=M-1"
+                + "A=M"
                 + "M=D"
+                += incrementStack()
         })
     }
+
     
     
 }
