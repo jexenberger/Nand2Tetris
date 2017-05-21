@@ -19,7 +19,8 @@ public class Parser {
     init?(fromFile fileName:String) {
         currentLine = -1
         do {
-            self.sourceCode = try String(contentsOfFile: fileName).components(separatedBy: "\n")
+            let code = try String(contentsOfFile: fileName)
+            self.sourceCode = code.components(separatedBy: CharacterSet.newlines)
         } catch {
             return nil
         }
@@ -39,13 +40,13 @@ public class Parser {
     
     
     public func advance() -> Bool {
-        while (hasMoreCode() && isLineIgnorable()) {
+        currentLine += 1        
+        while  (isLineIgnorable()) {
             currentLine += 1
         }
         guard hasMoreCode() else {
             return false
         }
-        currentLine += 1
         return true
     }
     

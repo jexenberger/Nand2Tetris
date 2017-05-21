@@ -29,6 +29,41 @@ public func gotoStack() -> [String] {
     ]
 }
 
+
+public func booleanOp(id:Int = CodeWriter.idCounter, label:String, operation:String) -> [String] {
+    return [
+        "@\(label).\(id).TRUE",
+        "D,\(operation)",
+        //false if jump fails
+        "D=0",
+        "@\(label).\(id).END",
+        "0,JMP",
+        "(\(label).\(id).TRUE)",
+        "D=-1",
+        "(\(label).\(id).END)"
+    ]
+}
+
+public func xor(id:Int = CodeWriter.idCounter) -> [String] {
+    return [
+        "@XOR.A.\(id)",
+        "D=M",
+        "@XOR.B.\(id)",
+        "D=D&M",
+        "D=!D",
+        "@XOR.TEMP.\(id)",
+        "M=D",
+        "@XOR.A.\(id)",
+        "D=M",
+        "@XOR.B.\(id)",
+        "D=D|M",
+        "@XOR.TEMP.\(id)",
+        "D=D&M",
+        "@XOR.RESULT.\(id)",
+        "M=D"
+    ]
+}
+
 public func loadStack() -> [String] {
     return [
         "@SP",
@@ -54,7 +89,7 @@ public  func setAddr(to:String, offset:Int = 0) -> [String] {
         ]
     }
     
-    if offset > 1 {
+    if offset > 0 {
         return [
             "@\(offset)",
             "D=A",

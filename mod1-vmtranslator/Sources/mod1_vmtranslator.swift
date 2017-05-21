@@ -1,4 +1,5 @@
-struct mod1_vmtranslator {
+import Foundation
 
-    var text = "Hello, World!"
-}
+
+
+

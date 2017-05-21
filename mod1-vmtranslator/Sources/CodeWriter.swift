@@ -64,6 +64,7 @@ public class CodeWriter {
     let fileName:String
     let tempOffset:Int = 5
     var memMap:[String:String]
+    static var idCounter:Int = 0
     
     init(fileName:String) {
         self.fileName = fileName
@@ -77,7 +78,40 @@ public class CodeWriter {
             "argument" : "ARG",
             "constant" : "N/A"
         ]
-        
+    }
+    
+     func getOpMap() -> [String:Emitter] {
+        return [
+            "push":pushCall,
+            "pop":popCall,
+            "add":addCall,
+            "sub":subCall,
+            "neg":negCall,
+            "eq":eqCall,
+            "gt":gtCall,
+            "lt":ltCall,
+            "and":andCall,
+            "or":orCall,
+            "not":bitwiseNotCall,
+            "init":initCode
+        ]
+    }
+    
+    
+    func generate(code expr:VMExpression) throws -> CodeEmission {
+        guard let call = getOpMap()[expr.op] else {
+            throw CodeError.invalidOp(expr.line, expr.op)
+        }
+        return call(expr)
+    }
+    
+    func compile(using srcCode:Parser) throws -> String {
+        var code = ""
+        while srcCode.advance() {
+           code += try generate(code: srcCode.instruction()).asString()
+        }
+        try code.write(toFile: self.fileName, atomically: true, encoding: String.Encoding.utf8)
+        return code
     }
     
     
@@ -100,7 +134,25 @@ public class CodeWriter {
             .append("D=A")
             .append("@SP")
             .append("M=D")
+            //init argument
+            .append("@40")
+            .append("D=A")
+            .append("@ARG")
+            .append("M=D")
+        
     }
+    
+    
+    public func nextId() -> Int {
+        CodeWriter.idCounter += 1
+        return CodeWriter.idCounter
+    }
+    
+    public func generate(label:String) -> String {
+        return "@\(label).\(CodeWriter.idCounter)"
+    }
+    
+    
     
     
     
@@ -119,40 +171,145 @@ public class CodeWriter {
                 .append("@\(self.fileName).\(pos)")
                 .append("M=D")
         }
+        let nextId = self.nextId()
         return emission
+            
             //store the address of the target segement
             .append(ary: setAddr(to: hackAddr, offset: Int(pos)!), comment: "GOTO \(hackAddr) offset \(pos)")
             .append("D=A")
-            .append("@\(hackAddr).REG", comment: "Store address in staging memory area")
+            .append("@\(hackAddr).REG.\(nextId)", comment: "Store address in staging memory area")
             .append("M=D")
             //decrement the stack and store in D
             .append(ary: decrementStack(), comment: "decrement stack")
             .append(ary: loadStack(), comment: "loaded stack to D")
             //navigate to stored address and set form D
-            .append("@\(hackAddr).REG",comment: "get address from register")
+            .append("@\(hackAddr).REG.\(nextId)",comment: "get address from register")
             .append("A=M")
             .append("M=D", comment: "store stack value in address")
         
     }
     
-    public func addCall(expr:VMExpression) ->  CodeEmission {
+    
+    public func binaryOp(expr:VMExpression, op:String) ->  CodeEmission {
         let emission = CodeEmission(expr:expr)
         return emission
             .append(ary: decrementStack())
             .append(ary: loadStack())
             .append(ary: decrementStack())
             .append(ary: gotoStack())
-            .append("M=D+M")
+            .append(op)
+            .append(ary: gotoStack())
+            .append("M=D")
             .append(ary: incrementStack())
     }
     
-    public func negCall(expr:VMExpression) ->  CodeEmission {
+    
+    public func addCall(expr:VMExpression) ->  CodeEmission {
+        return binaryOp(expr: expr, op: "D=D+M")
+    }
+
+    public func subCall(expr:VMExpression) ->  CodeEmission {
+        return binaryOp(expr: expr, op: "D=M-D")
+    }
+    
+    public func andCall(expr:VMExpression) ->  CodeEmission {
+        return binaryOp(expr: expr, op: "D=D&M")
+    }
+
+    public func orCall(expr:VMExpression) ->  CodeEmission {
+        return binaryOp(expr: expr, op: "D=D|M")
+    }
+    
+    
+    public func unaryOp(expr:VMExpression, op:String) ->  CodeEmission {
         let emission = CodeEmission(expr:expr)
         return emission
             .append(ary: decrementStack())
             .append(ary: gotoStack())
-            .append("M=-M")
+            .append(op)
             .append(ary: incrementStack())
+    }
+    
+    public func negCall(expr:VMExpression) ->  CodeEmission {
+        return unaryOp(expr: expr, op: "M=-M")
+    }
+    
+    public func bitwiseNotCall(expr:VMExpression) ->  CodeEmission {
+        return unaryOp(expr: expr, op: "M=!M")
+    }
+
+    public func notCall(expr:VMExpression) ->  CodeEmission {
+        return unaryJump(expr: expr, op: "", label: "NOT.VAL", jmpOp: "JLT")
+    }
+    
+    
+    
+    func unique(variable:String) -> String {
+        return "@\(variable).\(CodeWriter.idCounter)"
+    }
+    
+    func unique(label:String) -> String {
+        return "(\(label).\(CodeWriter.idCounter))"
+    }
+    
+    
+    public func eqCall(expr:VMExpression) ->  CodeEmission {
+        _ = nextId()
+        let emission = CodeEmission(expr:expr)
+        return emission
+            .append(ary: decrementStack())
+            .append(ary: loadStack())
+            .append(unique(variable: "XOR.A"))
+            .append("M=D")
+            .append(ary: decrementStack())
+            .append(ary: loadStack())
+            .append(unique(variable: "XOR.B"))
+            .append("M=D")
+            .append(ary: xor())
+            .append(unique(variable: "XOR.RESULT"))
+            .append("D=M")
+            .append(ary: booleanOp(label: "EQ", operation: "JEQ"))
+            .append(ary: gotoStack())
+            .append("M=D")
+            .append(ary: incrementStack())
+    }
+    
+    public func binaryJump(expr:VMExpression, op:String, label:String, jmpOp:String) -> CodeEmission {
+        _ = nextId()
+        let emission = CodeEmission(expr:expr)
+        return emission
+            .append(ary: decrementStack())
+            .append(ary: loadStack())
+            .append(ary: decrementStack())
+            .append(ary: gotoStack())
+            .append(op)
+            .append(ary: booleanOp(label: label, operation: jmpOp))
+            .append(ary: gotoStack())
+            .append("M=D")
+            .append(ary: incrementStack())
+    }
+    
+    
+    public func unaryJump(expr:VMExpression, op:String, label:String, jmpOp:String) -> CodeEmission {
+        _ = nextId()
+        let emission = CodeEmission(expr:expr)
+        return emission
+            .append(ary: decrementStack())
+            .append(ary: gotoStack())
+            .append(op)
+            .append(ary: booleanOp(label: label, operation: jmpOp))
+            .append(ary: gotoStack())
+            .append("M=D")
+            .append(ary: incrementStack())
+    }
+    
+    
+    public func ltCall(expr:VMExpression) ->  CodeEmission {
+        return binaryJump(expr: expr, op: "D=M-D", label: "LT", jmpOp: "JLT")
+    }
+    
+    public func gtCall(expr:VMExpression) ->  CodeEmission {
+        return binaryJump(expr: expr, op: "D=M-D", label: "GT", jmpOp: "JGT")
     }
     
     
