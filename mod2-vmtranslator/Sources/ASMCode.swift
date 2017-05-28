@@ -80,6 +80,23 @@ public func storeStack() -> [String] {
     ]
 }
 
+public func storeAndIncrementPointers(pntrs:String ...) -> [String]{
+    var ary = [String]()
+    for pntr in pntrs {
+        ary.append(pntr)
+        ary.append("D=M")
+        ary.append(contentsOf: storeAndIncrementStack())
+    }
+    return ary
+}
+
+public func storeAndIncrementStack() -> [String] {
+    var ary = [String]()
+    ary.append(contentsOf: storeStack())
+    ary.append(contentsOf: incrementStack())
+    return ary
+}
+
 public  func setAddr(to:String, offset:Int = 0) -> [String] {
     //handle direct addressing
     let target = Int(to)

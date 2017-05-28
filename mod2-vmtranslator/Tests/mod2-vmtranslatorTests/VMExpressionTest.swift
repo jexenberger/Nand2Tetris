@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import mod1_vmtranslator
+@testable import mod2_vmtranslator
 
 class VMExpressionTest: XCTestCase {
 

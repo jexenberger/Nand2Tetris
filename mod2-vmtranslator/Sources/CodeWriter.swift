@@ -18,9 +18,17 @@ public class CodeEmission  {
     }
     
     public func asString() -> String{
-        let start = "// BEGIN LINE \(expr.line) (\(expr.asString()))"
-        let end = "// ~ LINE  \(expr.line)\n\n"
-        return "\(start)\n\(instrs.map({(i,x) in "\t\(i)" + (x != nil ? "\t//\(x!)" : "")}).joined(separator: "\n"))\n\(end)"
+        let comment = "\t// LINE \(expr.line) (\(expr.asString().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)))"
+        var commentAdded = false
+        let codeAry:[String] = instrs.map({(i,x) in
+            var str = "\(i.hasPrefix("(") ? "" : "\t")\(i)" // + (x != nil ? "\t//\(x!)" : "")
+            if !commentAdded {
+                commentAdded = true
+                str += comment
+            }
+            return str
+        })
+        return "\(codeAry.joined(separator: "\n"))\n"
     }
     
     public func append(_ instr:String, comment:String? = nil) -> CodeEmission {
@@ -29,15 +37,16 @@ public class CodeEmission  {
     }
     
     public func append(ary instr:[String], comment:String? = nil) -> CodeEmission {
+        /*
         _ = self.append("")
         if (comment != nil) {
             _ = self.append("//\(comment!)")
-        }
+        }*/
         for ix in instr {
-            let _ = self.append(ix)
+            let _ = (comment == nil) ?  self.append(ix) : self.append("\(ix)\t//\(comment!)")
             
         }
-        _ = self.append("")
+        //_ = self.append("")
         return self
     }
     
@@ -70,13 +79,13 @@ public class CodeWriter {
         self.fileName = fileName
         self.memMap =  [
             "local" : "LCL",
-            "static" : "N/A",
+            "static" : "STATIC",
             "this" : "THIS",
             "that" : "THAT",
             "temp" : "\(tempOffset)",
-            "pointer" : "N/A",
+            "pointer" : "POINTER",
             "argument" : "ARG",
-            "constant" : "N/A"
+            "constant" : "N_A"
         ]
     }
     
@@ -93,7 +102,10 @@ public class CodeWriter {
             "and":andCall,
             "or":orCall,
             "not":bitwiseNotCall,
-            "init":initCode
+            "init":initCode,
+            "label":callGotoLabel,
+            "goto":callLabel,
+            "if-goto":callIfGoto
         ]
     }
     
@@ -169,6 +181,14 @@ public class CodeWriter {
                 .append(ary: decrementStack(), comment: "decrement stack")
                 .append(ary: loadStack())
                 .append("@\(self.fileName).\(pos)")
+                .append("M=D")
+        }
+        if (seg == "pointer") {
+            let segment = (pos == "0") ? "THIS" : "THAT"
+            return emission
+                .append(ary: decrementStack(), comment: "decrement stack")
+                .append(ary: loadStack())
+                .append("@\(segment)")
                 .append("M=D")
         }
         let nextId = self.nextId()
@@ -327,6 +347,12 @@ public class CodeWriter {
             _ = emission
                 .append("@\(self.fileName).\(pos)")
                 .append("D=M")
+        case "pointer":
+            let segment = (pos == "0") ? "THIS" : "THAT"
+            _ = emission
+                .append("@\(segment)")
+                .append("D=M")
+            
         default:
             _ = emission
                 .append(ary: setAddr(to: hackAddr, offset: Int(pos)!))
@@ -335,6 +361,45 @@ public class CodeWriter {
         return emission
             .append(ary: storeStack())
             .append(ary: incrementStack())
+        
+    }
+    
+    public func callLabel(expr:VMExpression) -> CodeEmission {
+        let labelName = expr.arg0
+        let emission = CodeEmission(expr: expr)
+        return emission
+                .append("@\(labelName!)")
+                .append("0,JMP")
+    }
+    
+    public func callIfGoto(expr:VMExpression) -> CodeEmission {
+        let labelName = expr.arg0
+        let emission = CodeEmission(expr: expr)
+        return emission
+                .append(ary: decrementStack())
+                .append(ary: loadStack())
+                .append("@\(labelName!)")
+                .append("D,JGT")
+    }
+
+    
+    public func callGotoLabel(expr:VMExpression) -> CodeEmission {
+        let labelName = expr.arg0
+        let emission = CodeEmission(expr: expr)
+        return emission.append("(\(labelName!))")
+    }
+
+    
+    public func callCall(expr:VMExpression) -> CodeEmission {
+        let emission = CodeEmission(expr: expr)
+        return emission
+            .append("D=A")
+            .append(ary: storeAndIncrementStack())
+            .append(ary: storeAndIncrementPointers(pntrs: "@LCL","@ARG","@THIS","@THAT"))
+            .append("@5")
+            .append("D=A")
+            .append(ary: gotoStack())
+        
         
     }
     

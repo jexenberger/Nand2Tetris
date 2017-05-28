@@ -1,0 +1,10 @@
+//push two constants onto the stack
+//add them together
+init
+push constant 8
+push constant 9
+add
+
+push constant 17
+eq
+pop local 1
