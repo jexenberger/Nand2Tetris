@@ -9,62 +9,6 @@
 import Foundation
 
 
-public class CodeEmission  {
-    let expr:VMExpression
-    lazy var instrs:[(String,String?)] = []
-    
-    init(expr:VMExpression) {
-        self.expr = expr
-    }
-    
-    public func asString() -> String{
-        let comment = "\t// LINE \(expr.line) (\(expr.asString().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)))"
-        var commentAdded = false
-        let codeAry:[String] = instrs.map({(i,x) in
-            var str = "\(i.hasPrefix("(") ? "" : "\t")\(i)" // + (x != nil ? "\t//\(x!)" : "")
-            if !commentAdded {
-                commentAdded = true
-                str += comment
-            }
-            return str
-        })
-        return "\(codeAry.joined(separator: "\n"))\n"
-    }
-    
-    public func append(_ instr:String, comment:String? = nil) -> CodeEmission {
-        instrs.append((instr, comment))
-        return self
-    }
-    
-    public func append(ary instr:[String], comment:String? = nil) -> CodeEmission {
-        /*
-        _ = self.append("")
-        if (comment != nil) {
-            _ = self.append("//\(comment!)")
-        }*/
-        for ix in instr {
-            let _ = (comment == nil) ?  self.append(ix) : self.append("\(ix)\t//\(comment!)")
-            
-        }
-        //_ = self.append("")
-        return self
-    }
-    
-    static public func +(this:CodeEmission, _ intr:String) -> CodeEmission {
-        return this.append(intr)
-    }
-    
-    static public func +=(this:CodeEmission, _ intr:[String]) -> CodeEmission {
-        for instr in intr {
-            let _ = this.append(instr)
-            
-        }
-        return this
-    }
-}
-
-
-
 public class CodeWriter {
     
     
@@ -85,7 +29,8 @@ public class CodeWriter {
             "temp" : "\(tempOffset)",
             "pointer" : "POINTER",
             "argument" : "ARG",
-            "constant" : "N_A"
+            "constant" : "N_A",
+            "stack": "SP"
         ]
     }
     
@@ -105,7 +50,10 @@ public class CodeWriter {
             "init":initCode,
             "label":callGotoLabel,
             "goto":callLabel,
-            "if-goto":callIfGoto
+            "if-goto":callIfGoto,
+            "function":functionCall,
+            "call": callCall,
+            "return":returnCall
         ]
     }
     
@@ -137,21 +85,11 @@ public class CodeWriter {
         let emission = CodeEmission(expr:expr)
         return emission
             // init local
-            .append("@64")
-            .append("D=A")
-            .append("@LCL")
-            .append("M=D")
-            // init stack
-            .append("@32")
-            .append("D=A")
-            .append("@SP")
-            .append("M=D")
-            //init argument
-            .append("@40")
-            .append("D=A")
-            .append("@ARG")
-            .append("M=D")
-        
+            .append(ary: initPointer("@SP", at: 32))
+            .append(ary: initPointer("@LCL", at: 64))
+            .append(ary: initPointer("@THIS", at: 72))
+            .append(ary: initPointer("@THAT", at: 73))
+            .append(ary: initPointer("@ARG", at: 74))
     }
     
     
@@ -389,18 +327,72 @@ public class CodeWriter {
         return emission.append("(\(labelName!))")
     }
 
+    public func functionCall(expr:VMExpression) -> CodeEmission {
+        let emission = CodeEmission(expr: expr)
+        let name = expr.arg0!
+        let lclVars = Int(expr.arg1!)!
+        _ = emission.append("(\(name))")
+        for _ in 0..<lclVars {
+            _ = emission.append(emission: pushCall(expr: VMExpression(line: expr.line,op:"push",arg0:"local",arg1:"0")))
+        }
+        return emission
+
+    }
+    
+    public func returnCall(expr:VMExpression) -> CodeEmission {
+        let emission = CodeEmission(expr: expr)
+        let endFrame = "@Endframe.\(nextId())"
+        let returnAddress = "@ReturnAddress.\(nextId())"
+        return emission
+                .append("@LCL //set endframe reference to local")
+                .append("D=M")
+                .append(endFrame)
+                .append("M=D")
+                .append("@5 //retrieve and store return address")
+                .append("D=D-A")
+                .append("A=D")
+                .append("D=M")
+                .append(returnAddress)
+                .append("M=D")
+                .append(emission: popCall(expr: VMExpression(line: expr.line,op:"pop",arg0:"argument",arg1:"0")))
+                .append("@ARG //Recover SP to ARG + 1")
+                .append("D=M+1")
+                .append("@SP")
+                .append("M=D")
+                .append(ary: restoreFrom(endFrame: endFrame, pointer: "@THAT", amt: 1))
+                .append(ary: restoreFrom(endFrame: endFrame, pointer: "@THIS", amt: 2))
+                .append(ary: restoreFrom(endFrame: endFrame, pointer: "@ARG", amt: 3))
+                .append(ary: restoreFrom(endFrame: endFrame, pointer: "@LCL", amt: 4))
+                .append(returnAddress + "//Jump back to return address")
+                .append("A=M")
+                .append("0,JMP")
+    }
     
     public func callCall(expr:VMExpression) -> CodeEmission {
         let emission = CodeEmission(expr: expr)
+        let funcName = expr.arg0!
+        let returnAddress = "\(funcName)$ret.\(nextId())"
+        let nArgs = Int(expr.arg1!)!
         return emission
+            .append("@\(returnAddress) //Return address for \(returnAddress)")
             .append("D=A")
             .append(ary: storeAndIncrementStack())
             .append(ary: storeAndIncrementPointers(pntrs: "@LCL","@ARG","@THIS","@THAT"))
-            .append("@5")
+            .append("@5 // set @ARG (by default set to 74)")
             .append("D=A")
-            .append(ary: gotoStack())
-        
-        
+            .append("@SP")
+            .append("D=M-D")
+            .append("@\(nArgs)")
+            .append("D=D-A")
+            .append("@ARG")
+            .append("M=D //New ARG is set")
+            .append("@SP")
+            .append("D=M")
+            .append("@LCL")
+            .append("M=D")
+            .append("@\(funcName)")
+            .append("0,JMP")
+            .append("(\(returnAddress))")
     }
     
     

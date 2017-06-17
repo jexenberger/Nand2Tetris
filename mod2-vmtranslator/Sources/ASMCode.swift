@@ -22,6 +22,20 @@ public  func incrementStack() -> [String] {
     ]
 }
 
+public func restoreFrom(endFrame:String, pointer:String, amt:Int) -> [String] {
+    return [
+        "@\(amt)",
+        "D=A",
+        endFrame,
+        "D=M-D",
+        "A=D",
+        "D=M",
+        pointer,
+        "M=D"
+        
+    ]
+}
+
 public func gotoStack() -> [String] {
     return [
         "@SP",
@@ -72,6 +86,15 @@ public func loadStack() -> [String] {
     ]
 }
 
+public func initPointer(_ pntr:String, at:Int) -> [String] {
+    return [
+        "@\(at) //Initialise pointer \(pntr)",
+        "D=A",
+        pntr,
+        "M=D"
+    ]
+}
+
 public func storeStack() -> [String] {
     return [
         "@SP",
@@ -83,7 +106,7 @@ public func storeStack() -> [String] {
 public func storeAndIncrementPointers(pntrs:String ...) -> [String]{
     var ary = [String]()
     for pntr in pntrs {
-        ary.append(pntr)
+        ary.append(pntr+" //Storing the current value of \(pntr)")
         ary.append("D=M")
         ary.append(contentsOf: storeAndIncrementStack())
     }

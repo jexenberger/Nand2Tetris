@@ -8,13 +8,14 @@
 
 import Foundation
 
-if (CommandLine.arguments.count < 3) {
-    print("Usage: mod1-vmtranslator [source vm code file] [target asm file]")
+let argCount = CommandLine.arguments.count
+if (argCount < 2) {
+    print("Usage: mod1-vmtranslator [source vm code file] (target asm file)")
     exit(-1)
 }
 
 let src = CommandLine.arguments[1]
-let target = CommandLine.arguments[2]
+let target = (argCount > 2) ? CommandLine.arguments[2] : "\(String(src.characters.split(separator:".")[0])).asm"
 print("compiling '\(src)' to '\(target)'")
 
 let writer = CodeWriter(fileName: target)

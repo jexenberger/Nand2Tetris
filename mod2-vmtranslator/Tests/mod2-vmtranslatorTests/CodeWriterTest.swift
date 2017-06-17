@@ -225,22 +225,71 @@ class CodeWriterTest: XCTestCase {
     
     
     func testCompile() throws {
-        var code = ""
-        code += "//push two constants onto the stack\n"
-        code += "//add them together\n"
-        code += "init\n"
-        code += "push constant 8\n"
-        code += "push constant 9\n"
-        code += "add\n"
-        code += "push constant 17\n"
-        code += "eq\n"
-        code += "pop local 1\n"
-        try code.write(toFile: "test.vm", atomically: true, encoding: String.Encoding.utf8)
+        let code = [
+            "//push two constants onto the stack",
+            "//add them together\n",
+            "init",
+            "push constant 8",
+            "push constant 9",
+            "call add 2",
+            "function add 1",
+            "add",
+            "push constant 17",
+            "eq",
+            "return",
+            "pop local 1"
+        ]
+        try code.joined(separator: "\n").write(toFile: "test.vm", atomically: true, encoding: String.Encoding.utf8)
         guard let parser = Parser(fromFile: "test.vm") else {
             throw CodeError.bug("this should have worked")
         }
         let writer = CodeWriter(fileName: "/tmp/test.asm")
-        try writer.compile(using: parser)
+        _ = try writer.compile(using: parser)
+        print("code written!")
+    }
+    
+    func testReallySimpleFunction() throws {
+        let code = [
+            "init",
+            "call add 0",
+            "pop local 0",
+            "function add 0",
+            "push constant 1",
+            "push constant 1",
+            "add",
+            "return\n",
+            ]
+        try code.joined(separator: "\n").write(toFile: "reallySimpleFunction.vm", atomically: true, encoding: String.Encoding.utf8)
+        guard let parser = Parser(fromFile: "reallySimpleFunction.vm") else {
+            throw CodeError.bug("this should have worked")
+        }
+        let writer = CodeWriter(fileName: "/tmp/reallySimpleFunction.asm")
+        _ = try writer.compile(using: parser)
+        print("code written!")
+    }
+    
+    
+    func testSimpleFunction() throws {
+        let code = [
+            "init",
+            "push constant 1",
+            "call add 1",
+            "pop local 0",
+            "function add 1",
+            "push constant 1",
+            "pop local 0",
+            "push local 0",
+            "push argument 0",
+            "add",
+            "return\n",
+            ]
+        try code.joined(separator: "\n").write(toFile: "simpleFunction.vm", atomically: true, encoding: String.Encoding.utf8)
+        guard let parser = Parser(fromFile: "simpleFunction.vm") else {
+            throw CodeError.bug("this should have worked")
+        }
+        let writer = CodeWriter(fileName: "/tmp/simpleFunction.asm")
+        _ = try writer.compile(using: parser)
+        print("code written!")
     }
     
 
